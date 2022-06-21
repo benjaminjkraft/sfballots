@@ -28,8 +28,10 @@ func main() {
 	fmt.Println(b)
 
 	for _, id := range ids {
-		ShowProposition(b, id)
+		ShowContest(b, id)
 	}
 
-	ShowManyPropositions(b, ids...)
+	if len(ids) > 1 {
+		ShowManyContests(b, ids...)
+	}
 }

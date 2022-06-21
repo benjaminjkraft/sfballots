@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/exp/slices"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 func ShowContestsByCard(b *BallotData) {
@@ -25,57 +28,44 @@ func ShowContestsByCard(b *BallotData) {
 	}
 }
 
-type propVote int
-
 const (
-	yes propVote = iota
-	no
-	abstain
-	invalid
+	abstain = "Abs"
+	invalid = "Inv"
 )
 
-func (v propVote) String() string {
-	switch v {
-	case no:
-		return "No"
-	case yes:
-		return "Yes"
-	case abstain:
-		return "Abs"
-	case invalid:
-		return "Inv"
-	default:
-		panic(fmt.Sprintf("invalid propVote %d", v))
+func shortName(name string) string {
+	// TODO: fallacies programmers believe about names
+	for {
+		i := strings.LastIndexByte(name, ' ')
+		if i == -1 {
+			return name
+		}
+		last := name[i+1:]
+		switch last {
+		case "II", "III", "JR", "JR.", "SR", "SR.":
+			name = name[:i]
+		default:
+			return cases.Title(language.English).String(strings.TrimSuffix(last, ","))
+		}
 	}
 }
 
-func propCandidates(b *BallotData, contestID int) (map[int]propVote, error) {
+func candidates(b *BallotData, contestID int) (map[int]string, error) {
 	// NOTE: results here differ slightly from published results; seemingly for
 	// ballots that get manually audited that doesn't make it back into the
 	// dataset.
 	cands := b.CandidatesByContest[contestID]
-	if len(cands) != 2 {
-		return nil, fmt.Errorf("expected 2 candidates, got %v", cands)
-	}
-
-	ret := map[int]propVote{}
+	ret := map[int]string{}
 	for _, cand := range cands {
-		switch cand.Description {
-		case "Yes", "YES":
-			ret[cand.ID] = yes
-		case "No", "NO":
-			ret[cand.ID] = no
-		default:
-			return nil, fmt.Errorf("expected candidates yes and no, got %v", cand)
-		}
+		ret[cand.ID] = shortName(cand.Description)
 	}
-	if len(ret) != 2 {
-		return nil, fmt.Errorf("expected one yes one no, got %v", cands)
+	if len(ret) != len(cands) {
+		return nil, fmt.Errorf("dupe candidates, got %v", cands)
 	}
 	return ret, nil
 }
 
-func scoreContest(contest *RawCardContest, candidates map[int]propVote) (propVote, error) {
+func scoreContest(contest *RawCardContest, candidates map[int]string) (string, error) {
 	switch {
 	case contest.Undervotes > 0:
 		return abstain, nil
@@ -102,16 +92,98 @@ func scoreContest(contest *RawCardContest, candidates map[int]propVote) (propVot
 	return ret, nil
 }
 
-func ShowProposition(b *BallotData, contestID int) {
+func cmpOne(x, y string) int {
+	switch {
+	case x == y:
+		return 0
+
+	case y == "Incomplete":
+		return -1
+	case x == "Incomplete":
+		return 1
+	case y == "Inv" || y == "Invalid":
+		return -1
+	case x == "Inv" || x == "Invalid":
+		return 1
+	case y == "Abs" || y == "Abstain":
+		return -1
+	case x == "Abs" || x == "Abstain":
+		return 1
+	case y == "Write-in":
+		return -1
+	case x == "Write-in":
+		return 1
+
+	case x == "Yes":
+		return -1
+	case y == "Yes":
+		return 1
+	case x == "No":
+		return -1
+	case y == "No":
+		return 1
+
+	case x < y:
+		return -1
+	default:
+		return 1
+	}
+}
+
+func nonempty[T comparable](xs []T) []T {
+	var ret []T
+	var zero T
+	for _, x := range xs {
+		if x != zero {
+			ret = append(ret, x)
+		}
+	}
+	return ret
+}
+
+func less(x, y string) bool {
+	if x == y {
+		return false
+	}
+	xw := strings.Split(x, " ")
+	yw := strings.Split(y, " ")
+	xw = nonempty(xw)
+	yw = nonempty(yw)
+	return slices.CompareFunc(xw, yw, cmpOne) == -1
+}
+
+func formatResults(results map[string]int) string {
+	keys := make([]string, 0, len(results))
+	total := 0
+	w := len("Total")
+	for k, v := range results {
+		keys = append(keys, k)
+		total += v
+		if w < len(k) {
+			w = len(k)
+		}
+	}
+	slices.SortFunc(keys, less)
+
+	f := "%" + strconv.Itoa(w) + "v"
+	lines := make([]string, len(results)+1)
+	for i, k := range keys {
+		lines[i] = fmt.Sprintf(f+": %7v (%4.1f%%)", k, results[k], float64(100*results[k])/float64(total))
+	}
+	lines[len(results)] = fmt.Sprintf(f+": %7v", "Total", total)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func ShowContest(b *BallotData, contestID int) {
 	// NOTE: results here differ slightly from published results; seemingly for
 	// ballots that get manually audited that doesn't make it back into the
 	// dataset.
-	cands, err := propCandidates(b, contestID)
+	cands, err := candidates(b, contestID)
 	if err != nil {
 		panic(err)
 	}
 
-	results := map[propVote]int{}
+	results := map[string]int{}
 	for _, card := range b.Cards {
 		for _, contest := range card.Contests {
 			if contest.ID != contestID {
@@ -127,19 +199,30 @@ func ShowProposition(b *BallotData, contestID int) {
 	}
 
 	fmt.Println(b.Contests[contestID].Description)
-	for i := yes; i <= invalid; i++ {
-		fmt.Printf("%-3v: %d\n", i, results[i])
-	}
+	fmt.Print(formatResults(results))
 	fmt.Println()
 }
 
-func ShowManyPropositions(b *BallotData, contestIDs ...int) {
+func ShowManyContests(b *BallotData, contestIDs ...int) {
 	var err error
-	candss := make([]map[int]propVote, len(contestIDs))
+	candss := make([]map[int]string, len(contestIDs))
 	for i, contestID := range contestIDs {
-		candss[i], err = propCandidates(b, contestID)
+		candss[i], err = candidates(b, contestID)
 		if err != nil {
 			panic(err)
+		}
+	}
+
+	// Pad names consistently
+	for _, cands := range candss {
+		w := 0
+		for _, name := range cands {
+			if w < len(name) {
+				w = len(name)
+			}
+		}
+		for id, name := range cands {
+			cands[id] = fmt.Sprintf("%-"+strconv.Itoa(w)+"v", name)
 		}
 	}
 
@@ -150,10 +233,9 @@ func ShowManyPropositions(b *BallotData, contestIDs ...int) {
 
 	results := map[string]int{}
 	incomplete := 0
-	total := 0
 
 	for _, card := range b.Cards {
-		votes := make([]propVote, len(contestIDs))
+		votes := make([]string, len(contestIDs))
 		for i := range votes {
 			votes[i] = abstain
 		}
@@ -172,7 +254,6 @@ func ShowManyPropositions(b *BallotData, contestIDs ...int) {
 
 			if vote == abstain || vote == invalid {
 				incomplete++
-				total++
 				nVotes = 0
 				break
 			}
@@ -184,30 +265,10 @@ func ShowManyPropositions(b *BallotData, contestIDs ...int) {
 			continue
 		}
 
-		voteStrings := make([]string, len(votes))
-		for i, vote := range votes {
-			voteStrings[i] = fmt.Sprintf("%-3v", vote)
-		}
-		voteString := strings.Join(voteStrings, " ")
+		voteString := strings.Join(votes, " ")
 		results[voteString]++
-		total++
 	}
+	results["Incomplete"] = incomplete
 
-	keys := make([]string, 0, len(results))
-	for k := range results {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	w := len(keys[0])
-	if w < len("Incomplete") {
-		w = len("Incomplete")
-	}
-	f := "%" + strconv.Itoa(w) + "v"
-
-	for _, k := range keys {
-		fmt.Printf(f+": %7v (%4.1f%%)\n", k, results[k], float64(100*results[k])/float64(total))
-	}
-	fmt.Printf(f+": %7v (%4.1f%%)\n", "Incomplete", incomplete, float64(100*incomplete)/float64(total))
-	fmt.Printf(f+": %7v\n", "Total", total)
+	fmt.Print(formatResults(results))
 }
