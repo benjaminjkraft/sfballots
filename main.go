@@ -43,6 +43,8 @@ func main() {
 
 	fmt.Println(b)
 
+	ShowContestsByCard(b)
+
 	for _, id := range ids {
 		ShowContest(b, id)
 	}
@@ -53,7 +55,7 @@ func main() {
 		}
 	}
 
-	if len(ids) > 2 {
+	if len(ids) > 1 {
 		grid := GridChart(b, ids...)
 		filename := filepath.Join(os.Args[1],
 			"results_grid_"+strings.Join(map1(strconv.Itoa, ids), "_")+".csv")

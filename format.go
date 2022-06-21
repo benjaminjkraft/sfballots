@@ -85,10 +85,14 @@ func formatCSV(results map[string]int) string {
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, less)
+	cols := len(nonempty(strings.Split(keys[0], " "))) + 1
 
 	lines := make([]string, len(results))
 	for i, k := range keys {
-		cells := append(nonempty(strings.Split(k, " ")), strconv.Itoa(results[k]))
+		cells := make([]string, cols)
+		copy(cells, nonempty(strings.Split(k, " ")))
+		// (there will be a gap between these for incomplete)
+		cells[len(cells)-1] = strconv.Itoa(results[k])
 		lines[i] = strings.Join(cells, ",")
 	}
 	return strings.Join(lines, "\n") + "\n"
