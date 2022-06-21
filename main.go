@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -32,6 +34,14 @@ func main() {
 	}
 
 	if len(ids) > 1 {
-		ShowManyContests(b, ids...)
+		results := AnalyzeManyContests(b, ids...)
+		fmt.Print(formatResults(results))
+		err := os.WriteFile(
+			filepath.Join(os.Args[1], strings.Join(os.Args[2:], "_")+".csv"),
+			[]byte(formatCSV(results)),
+			0o644)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
