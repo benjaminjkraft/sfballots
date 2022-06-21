@@ -8,6 +8,20 @@ import (
 	"strings"
 )
 
+func doMany(b *BallotData, dir string, show bool, ids ...int) {
+	results := AnalyzeManyContests(b, ids...)
+	if show {
+		fmt.Print(formatResults(results))
+	}
+	filename := filepath.Join(dir,
+		"results_"+strings.Join(map1(strconv.Itoa, ids), "_")+".csv")
+	err := os.WriteFile(filename, []byte(formatCSV(results)), 0o644)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("wrote", filename)
+}
+
 func main() {
 	d, err := LoadAll(os.Args[1])
 	if err != nil {
@@ -33,15 +47,20 @@ func main() {
 		ShowContest(b, id)
 	}
 
-	if len(ids) > 1 {
-		results := AnalyzeManyContests(b, ids...)
-		fmt.Print(formatResults(results))
-		err := os.WriteFile(
-			filepath.Join(os.Args[1], strings.Join(os.Args[2:], "_")+".csv"),
-			[]byte(formatCSV(results)),
-			0o644)
+	for _, is := range powerset(ids) {
+		if len(is) > 1 {
+			doMany(b, os.Args[1], len(is) == len(ids), is...)
+		}
+	}
+
+	if len(ids) > 2 {
+		grid := GridChart(b, ids...)
+		filename := filepath.Join(os.Args[1],
+			"results_grid_"+strings.Join(map1(strconv.Itoa, ids), "_")+".csv")
+		err = os.WriteFile(filename, []byte(formatGrid(grid)), 0o644)
 		if err != nil {
 			panic(err)
 		}
+		fmt.Println("wrote", filename)
 	}
 }

@@ -46,17 +46,6 @@ func cmpOne(x, y string) int {
 	}
 }
 
-func nonempty[T comparable](xs []T) []T {
-	var ret []T
-	var zero T
-	for _, x := range xs {
-		if x != zero {
-			ret = append(ret, x)
-		}
-	}
-	return ret
-}
-
 func less(x, y string) bool {
 	if x == y {
 		return false
@@ -103,4 +92,12 @@ func formatCSV(results map[string]int) string {
 		lines[i] = strings.Join(cells, ",")
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func formatGrid[T any](grid [][]T) string {
+	return strings.Join(map1(func(row []T) string {
+		return strings.Join(map1(func(cell T) string {
+			return fmt.Sprint(cell)
+		}, row), ",")
+	}, grid), "\n") + "\n"
 }

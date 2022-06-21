@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -188,4 +190,58 @@ func AnalyzeManyContests(b *BallotData, contestIDs ...int) map[string]int {
 	results["Incomplete"] = incomplete
 
 	return results
+}
+
+func GridChart(b *BallotData, contestIDs ...int) [][]float64 {
+	ns := make([]int, len(contestIDs))
+	candss := make([][]string, len(contestIDs))
+	for i, contestID := range contestIDs {
+		cands, err := candidates(b, contestID)
+		if err != nil {
+			panic(err)
+		}
+		candss[i] = maps.Values(cands)
+		slices.SortFunc(candss[i], less)
+		ns[i] = len(cands)
+	}
+
+	// hack hack hack pad names to match AnalyzeManyContests
+	for _, cands := range candss {
+		w := 0
+		for _, name := range cands {
+			if w < len(name) {
+				w = len(name)
+			}
+		}
+		for i, name := range cands {
+			cands[i] = fmt.Sprintf("%-"+strconv.Itoa(w)+"v", name)
+		}
+	}
+
+	h, w := sum(ns[1:]), sum(ns[:len(ns)-1])
+	ret := make([][]float64, h)
+	r := 0
+	for i := 1; i < len(contestIDs); i++ {
+		for k := 0; k < ns[i]; k++ {
+			ret[r+k] = make([]float64, w)
+		}
+		c := 0
+		for j := 0; j < i; j++ {
+			results := AnalyzeManyContests(b, contestIDs[i], contestIDs[j])
+			total := sum(maps.Values(results))
+
+			for k := 0; k < ns[i]; k++ {
+				cand1 := candss[i][k]
+				for m := 0; m < ns[j]; m++ {
+					cand2 := candss[j][m]
+					votes := results[cand1+" "+cand2]
+					ret[r+k][c+m] = float64(votes) / float64(total)
+				}
+			}
+
+			c += ns[j]
+		}
+		r += ns[i]
+	}
+	return ret
 }
