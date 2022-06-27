@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -101,7 +102,68 @@ func formatCSV(results map[string]int) string {
 func formatGrid[T any](grid [][]T) string {
 	return strings.Join(map1(func(row []T) string {
 		return strings.Join(map1(func(cell T) string {
+			if interface{}(cell) == nil {
+				return ""
+			}
 			return fmt.Sprint(cell)
 		}, row), ",")
 	}, grid), "\n") + "\n"
+}
+
+type color [3]uint8
+
+var (
+	green = color{87, 187, 138}
+	white = color{255, 255, 255}
+)
+
+func formatGridHTML[T any](grid [][]T) string {
+	var maxVal float64
+	for _, row := range grid {
+		for _, cell := range row {
+			if v, ok := any(cell).(float64); ok {
+				if v > maxVal {
+					maxVal = v
+				}
+			}
+		}
+	}
+
+	var b bytes.Buffer
+	b.WriteString("<table class=\"ballot-grid\">\n<thead>\n")
+	inHead := true
+	for _, row := range grid {
+		// assume strings are headers
+		if inHead {
+			_, isHead := any(row[len(row)-1]).(string)
+			if !isHead {
+				b.WriteString("</thead>\n<tbody>\n")
+				inHead = false
+			}
+		}
+		b.WriteString("<tr>")
+		for _, cell := range row {
+			switch cell := any(cell).(type) {
+			case nil:
+				b.WriteString("<th/>")
+			case string:
+				// don't html inject me SFDOE!
+				fmt.Fprintf(&b, "<th>%s</th>", cell)
+			case float64:
+				var c color
+				f := cell / maxVal
+				for i := 0; i < 3; i++ {
+					c[i] = uint8(f*float64(green[i]) + (1-f)*float64(white[i]))
+				}
+				fmt.Fprintf(&b,
+					`<td style="background-color: #%x%x%x;">%.2f%%</td>`,
+					c[0], c[1], c[2], 100*cell)
+			default:
+				fmt.Fprintf(&b, "<td>%v</td>", cell)
+			}
+		}
+		b.WriteString("</tr>\n")
+	}
+	b.WriteString("</tbody>\n</table>\n")
+	return b.String()
 }

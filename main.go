@@ -57,12 +57,20 @@ func main() {
 
 	if len(ids) > 1 {
 		grid := GridChart(b, ids...)
-		filename := filepath.Join(os.Args[1],
-			"results_grid_"+strings.Join(map1(strconv.Itoa, ids), "_")+".csv")
-		err = os.WriteFile(filename, []byte(formatGrid(grid)), 0o644)
+		basename := "results_grid_" + strings.Join(map1(strconv.Itoa, ids), "_")
+
+		csv := filepath.Join(os.Args[1], basename+".csv")
+		err = os.WriteFile(csv, []byte(formatGrid(grid)), 0o644)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("wrote", filename)
+		fmt.Println("wrote", csv)
+
+		html := filepath.Join(os.Args[1], basename+".html")
+		err = os.WriteFile(html, []byte(formatGridHTML(grid)), 0o644)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("wrote", html)
 	}
 }
