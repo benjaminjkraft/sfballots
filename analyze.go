@@ -30,8 +30,8 @@ func ShowContestsByCard(b *BallotData) {
 }
 
 const (
-	abstain = "Abs"
-	invalid = "Inv"
+	abstain = "Abstain"
+	invalid = "Invalid"
 )
 
 func shortName(name string) string {
@@ -45,6 +45,15 @@ func shortName(name string) string {
 		switch last {
 		case "II", "III", "JR", "JR.", "SR", "SR.":
 			name = name[:i]
+		// me reaping:
+		case "COLLINS":
+			return fmt.Sprintf("Collins, %s.", name[:1])
+		case "JACOBS":
+			return "Underwood Jacobs"
+		case "ROUX":
+			return "Le Roux"
+		case "KRIEG":
+			return "Von Krieg"
 		default:
 			return cases.Title(language.English).String(strings.TrimSuffix(last, ","))
 		}
@@ -122,7 +131,7 @@ func ShowContest(b *BallotData, contestID int) {
 	fmt.Println()
 }
 
-func AnalyzeManyContests(b *BallotData, contestIDs ...int) map[string]int {
+func AnalyzeManyContests(b *BallotData, coalesceInvalid bool, contestIDs ...int) map[string]int {
 	var err error
 	candss := make([]map[int]string, len(contestIDs))
 	for i, contestID := range contestIDs {
@@ -133,15 +142,18 @@ func AnalyzeManyContests(b *BallotData, contestIDs ...int) map[string]int {
 	}
 
 	// Pad names consistently
-	for _, cands := range candss {
-		w := 0
+	ws := make([]int, len(candss))
+	for i, cands := range candss {
+		if !coalesceInvalid {
+			ws[i] = len(abstain)
+		}
 		for _, name := range cands {
-			if w < len(name) {
-				w = len(name)
+			if ws[i] < len(name) {
+				ws[i] = len(name)
 			}
 		}
 		for id, name := range cands {
-			cands[id] = fmt.Sprintf("%-"+strconv.Itoa(w)+"v", name)
+			cands[id] = fmt.Sprintf("%-"+strconv.Itoa(ws[i])+"v", name)
 		}
 	}
 
@@ -172,9 +184,13 @@ func AnalyzeManyContests(b *BallotData, contestIDs ...int) map[string]int {
 			}
 
 			if vote == abstain || vote == invalid {
-				incomplete++
-				nVotes = 0
-				break
+				if coalesceInvalid {
+					incomplete++
+					nVotes = 0
+					break
+				} else {
+					vote = fmt.Sprintf("%-"+strconv.Itoa(ws[i])+"v", vote)
+				}
 			}
 
 			votes[i] = vote
@@ -184,15 +200,17 @@ func AnalyzeManyContests(b *BallotData, contestIDs ...int) map[string]int {
 			continue
 		}
 
-		voteString := strings.Join(votes, " ")
+		voteString := strings.Join(votes, "|")
 		results[voteString]++
 	}
-	results["Incomplete"] = incomplete
+	if coalesceInvalid {
+		results["Incomplete"] = incomplete
+	}
 
 	return results
 }
 
-func GridChart(b *BallotData, contestIDs ...int) [][]any {
+func GridChart(b *BallotData, coalesceInvalid bool, contestIDs ...int) [][]any {
 	ns := make([]int, len(contestIDs))
 	candss := make([][]string, len(contestIDs))
 	for i, contestID := range contestIDs {
@@ -201,8 +219,11 @@ func GridChart(b *BallotData, contestIDs ...int) [][]any {
 			panic(err)
 		}
 		candss[i] = maps.Values(cands)
+		if !coalesceInvalid {
+			candss[i] = append(candss[i], abstain, invalid)
+		}
 		slices.SortFunc(candss[i], less)
-		ns[i] = len(cands)
+		ns[i] = len(candss[i])
 	}
 
 	// hack hack hack pad names to match AnalyzeManyContests
@@ -256,14 +277,14 @@ func GridChart(b *BallotData, contestIDs ...int) [][]any {
 		}
 		c := labels
 		for j := 0; j < i; j++ {
-			results := AnalyzeManyContests(b, contestIDs[i], contestIDs[j])
+			results := AnalyzeManyContests(b, coalesceInvalid, contestIDs[i], contestIDs[j])
 			total := sum(maps.Values(results))
 
 			for k := 0; k < ns[i]; k++ {
 				cand1 := candss[i][k]
 				for m := 0; m < ns[j]; m++ {
 					cand2 := candss[j][m]
-					votes := results[cand1+" "+cand2]
+					votes := results[cand1+"|"+cand2]
 					ret[r+k][c+m] = float64(votes) / float64(total)
 				}
 			}

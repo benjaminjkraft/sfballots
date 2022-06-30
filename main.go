@@ -9,7 +9,7 @@ import (
 )
 
 func doMany(b *BallotData, dir string, show bool, ids ...int) {
-	results := AnalyzeManyContests(b, ids...)
+	results := AnalyzeManyContests(b, len(ids) > 2, ids...)
 	if show {
 		fmt.Print(formatResults(results))
 	}
@@ -56,7 +56,7 @@ func main() {
 	}
 
 	if len(ids) > 1 {
-		grid := GridChart(b, ids...)
+		grid := GridChart(b, len(ids) > 2, ids...)
 		basename := "results_grid_" + strings.Join(map1(strconv.Itoa, ids), "_")
 
 		csv := filepath.Join(os.Args[1], basename+".csv")

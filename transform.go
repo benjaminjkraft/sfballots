@@ -18,6 +18,10 @@ func BuildBallotData(in *RawBallotData) (*BallotData, error) {
 		CandidatesByContest: map[int][]*RawCandidate{},
 	}
 	for _, cand := range in.Candidates {
+		if cand.Type == "QualifiedWriteIn" {
+			// Skip write-ins as we don't have that data anyway
+			continue
+		}
 		out.Candidates[cand.ID] = cand
 		out.CandidatesByContest[cand.ContestID] = append(
 			out.CandidatesByContest[cand.ContestID], cand)

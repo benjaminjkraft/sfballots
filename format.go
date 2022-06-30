@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"strings"
@@ -51,8 +52,8 @@ func less(x, y string) bool {
 	if x == y {
 		return false
 	}
-	xw := strings.Split(x, " ")
-	yw := strings.Split(y, " ")
+	xw := strings.Split(x, "|")
+	yw := strings.Split(y, "|")
 	xw = nonempty(xw)
 	yw = nonempty(yw)
 	return slices.CompareFunc(xw, yw, cmpOne) == -1
@@ -86,28 +87,41 @@ func formatCSV(results map[string]int) string {
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, less)
-	cols := len(nonempty(strings.Split(keys[0], " "))) + 1
+	cols := len(nonempty(strings.Split(keys[0], "|"))) + 1
 
-	lines := make([]string, len(results))
+	cells := make([][]string, len(results))
 	for i, k := range keys {
-		cells := make([]string, cols)
-		copy(cells, nonempty(strings.Split(k, " ")))
+		cells[i] = make([]string, cols)
+		copy(cells[i], nonempty(strings.Split(k, "|")))
 		// (there will be a gap between these for incomplete)
-		cells[len(cells)-1] = strconv.Itoa(results[k])
-		lines[i] = strings.Join(cells, ",")
+		cells[i][cols-1] = strconv.Itoa(results[k])
 	}
-	return strings.Join(lines, "\n") + "\n"
+
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	err := w.WriteAll(cells)
+	if err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
 
 func formatGrid[T any](grid [][]T) string {
-	return strings.Join(map1(func(row []T) string {
-		return strings.Join(map1(func(cell T) string {
+	strings := map1(func(row []T) []string {
+		return map1(func(cell T) string {
 			if interface{}(cell) == nil {
 				return ""
 			}
 			return fmt.Sprint(cell)
-		}, row), ",")
-	}, grid), "\n") + "\n"
+		}, row)
+	}, grid)
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	err := w.WriteAll(strings)
+	if err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
 
 type color [3]uint8
@@ -130,7 +144,7 @@ func formatGridHTML[T any](grid [][]T) string {
 	}
 
 	var b bytes.Buffer
-	b.WriteString("<table class=\"ballot-grid\">\n<thead>\n")
+	b.WriteString("<table>\n<thead>\n")
 	inHead := true
 	for _, row := range grid {
 		// assume strings are headers
@@ -145,7 +159,7 @@ func formatGridHTML[T any](grid [][]T) string {
 		for _, cell := range row {
 			switch cell := any(cell).(type) {
 			case nil:
-				b.WriteString("<th/>")
+				b.WriteString("<td/>")
 			case string:
 				// don't html inject me SFDOE!
 				fmt.Fprintf(&b, "<th>%s</th>", cell)
