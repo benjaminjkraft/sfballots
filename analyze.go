@@ -295,3 +295,29 @@ func GridChart(b *BallotData, coalesceInvalid bool, contestIDs ...int) [][]any {
 	}
 	return ret
 }
+
+func ShowPrecinctPortions(b *BallotData) {
+	counts := make(map[int]int)
+	for _, cvr := range b.Raw.CVRs {
+		for _, sess := range cvr.Sessions {
+			counts[sess.Original.PrecinctPortionID]++
+		}
+	}
+
+	min := 0x7fffffff
+	for _, ct := range counts {
+		if ct < min {
+			min = ct
+		}
+	}
+
+	for id, ct := range counts {
+		fmt.Printf("%v - %v votes", b.PrecinctPortionNames[id], ct)
+		if ct <= min {
+			fmt.Printf(" **********")
+		} else if ct <= 100 {
+			fmt.Printf(" ***")
+		}
+		fmt.Println()
+	}
+}

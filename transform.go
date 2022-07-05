@@ -3,19 +3,21 @@ package main
 import "fmt"
 
 type BallotData struct {
-	Raw                 *RawBallotData
-	Candidates          map[int]*RawCandidate
-	Contests            map[int]*RawContest
-	CandidatesByContest map[int][]*RawCandidate
-	Cards               []*RawCard
+	Raw                  *RawBallotData
+	Candidates           map[int]*RawCandidate
+	Contests             map[int]*RawContest
+	CandidatesByContest  map[int][]*RawCandidate
+	Cards                []*RawCard
+	PrecinctPortionNames map[int]string
 }
 
 func BuildBallotData(in *RawBallotData) (*BallotData, error) {
 	out := BallotData{
-		Raw:                 in,
-		Candidates:          map[int]*RawCandidate{},
-		Contests:            map[int]*RawContest{},
-		CandidatesByContest: map[int][]*RawCandidate{},
+		Raw:                  in,
+		Candidates:           map[int]*RawCandidate{},
+		Contests:             map[int]*RawContest{},
+		CandidatesByContest:  map[int][]*RawCandidate{},
+		PrecinctPortionNames: map[int]string{},
 	}
 	for _, cand := range in.Candidates {
 		if cand.Type == "QualifiedWriteIn" {
@@ -33,6 +35,9 @@ func BuildBallotData(in *RawBallotData) (*BallotData, error) {
 		for _, session := range cvr.Sessions {
 			out.Cards = append(out.Cards, session.Original.Cards...)
 		}
+	}
+	for _, pp := range in.PrecinctPortions {
+		out.PrecinctPortionNames[pp.ID] = pp.Description
 	}
 	return &out, nil
 }
