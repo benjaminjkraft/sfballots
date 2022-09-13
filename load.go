@@ -185,7 +185,7 @@ func LoadAll(dir string) (*RawBallotData, error) {
 		}
 	}
 
-	cvrFilenames, err := filepath.Glob(filepath.Join(dir, "CvrExport_*.json"))
+	cvrFilenames, err := filepath.Glob(filepath.Join(dir, "CvrExport*.json"))
 	if err != nil {
 		return nil, err
 	}

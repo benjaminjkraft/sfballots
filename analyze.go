@@ -12,15 +12,19 @@ import (
 )
 
 func ShowContestsByCard(b *BallotData) {
+	contestIndexes := make(map[int]int, len(b.Raw.Contests))
+	for i, contest := range b.Raw.Contests {
+		contestIndexes[contest.ID] = i
+	}
+
 	counts := map[string]int{}
-	// TODO: don't assume contest IDs are sequential 1-indexed
-	sig := make([]byte, len(b.Contests))
+	sig := make([]byte, len(contestIndexes))
 	for _, card := range b.Cards {
 		for i := range sig {
 			sig[i] = ' '
 		}
 		for _, contest := range card.Contests {
-			sig[contest.ID-1] = 'X'
+			sig[contestIndexes[contest.ID]] = 'X'
 		}
 		counts[string(sig)] += 1
 	}
@@ -36,6 +40,14 @@ const (
 
 func shortName(name string) string {
 	// TODO: fallacies programmers believe about names
+
+	// Alaska does Last, First M. "Nick" Jr.; just take up to the comma.
+	i := strings.IndexByte(name, ',')
+	if i != -1 {
+		return name[:i]
+	}
+
+	// SF does FIRST M. "NICK" LAST JR.; try to guess what is the "last" name.
 	for {
 		i := strings.LastIndexByte(name, ' ')
 		if i == -1 {
