@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,11 +32,13 @@ func ShowContestsByCard(b *BallotData) {
 	for k, v := range counts {
 		fmt.Println(k, v)
 	}
+	fmt.Println()
 }
 
 const (
-	abstain = "Abstain"
-	invalid = "Invalid"
+	abstain   = "Abstain"
+	invalid   = "Invalid"
+	exhausted = "Exhausted"
 )
 
 func shortName(name string) string {
@@ -140,6 +143,280 @@ func ShowContest(b *BallotData, contestID int) {
 
 	fmt.Println(b.Contests[contestID].Description)
 	fmt.Print(formatResults(results))
+	fmt.Println()
+}
+
+func scoreRCVContest(contest *RawCardContest, candidates map[int]string, ranks int) ([]int, string, error) {
+	switch {
+	case contest.Undervotes > 0:
+		return nil, abstain, nil
+	case contest.Overvotes > 0:
+		return nil, invalid, nil
+		// we ignore outstack condition IDs because UnusedRanking is fine.
+	}
+
+	votedRanks := make([]int, ranks)
+	for i := range votedRanks {
+		votedRanks[i] = -1
+	}
+	for _, mark := range contest.Marks {
+		if mark.IsAmbiguous {
+			continue
+		}
+		if votedRanks[mark.Rank-1] == -1 {
+			votedRanks[mark.Rank-1] = mark.CandidateID
+		} else {
+			// voted for two candidates at the same rank; ignore them all
+			votedRanks[mark.Rank-1] = -2
+		}
+	}
+
+	// We assume that ranks are tabulated as follows: for each rank, take the
+	// next rank the voter voted, skipping any that are empty, duplicated, or
+	// overvoted. So ABCD → ABCD, ABAB → AB, A__B → AB, etc. (Overvoted ranks
+	// are handled above.)
+	tabulatedRanks := make([]int, 0, ranks)
+	seen := make(map[int]bool, ranks)
+	for _, cand := range votedRanks {
+		if cand < 0 || seen[cand] {
+			// no valid vote at this rank
+			continue
+		}
+		tabulatedRanks = append(tabulatedRanks, cand)
+		seen[cand] = true
+	}
+
+	if len(tabulatedRanks) == 0 {
+		return nil, invalid, nil
+	}
+
+	names := make([]string, len(tabulatedRanks))
+	for i, id := range tabulatedRanks {
+		name, ok := candidates[id]
+		if !ok {
+			return nil, invalid, fmt.Errorf("unexpected candidate: %v", id)
+		}
+		names[i] = name
+	}
+	return tabulatedRanks, strings.Join(names, " > "), nil
+}
+
+type irvRoundResults struct {
+	topChoices map[string]int
+	eliminated string
+}
+
+func runIRV(ranks [][]int, candidates map[int]string) []irvRoundResults {
+	var results []irvRoundResults
+	eliminated := map[string]bool{}
+
+	for {
+		topChoices := map[string]int{}
+		for _, ranking := range ranks {
+			top := exhausted
+			for _, rank := range ranking {
+				if !eliminated[candidates[rank]] {
+					top = candidates[rank]
+					break
+				}
+			}
+			topChoices[top]++
+		}
+
+		total := 0
+		worst := -1
+		worstName := ""
+		for name, votes := range topChoices {
+			total += votes
+			if name != exhausted && (worst == -1 || votes < worst) {
+				worst = votes
+				worstName = name
+			}
+		}
+		eliminated[worstName] = true
+		results = append(results, irvRoundResults{topChoices, worstName})
+
+		if len(topChoices) <= 2 { // winner + exhausted
+			return results
+		}
+	}
+}
+
+func borda(numRanks int) func(int) int {
+	return func(rank int) int { return numRanks - rank }
+}
+
+var dowdall = func(rank int) float64 { return 1 / (float64(rank) + 1) }
+
+func runPositional[T numeric](ranks [][]int, candidates map[int]string, value func(int) T) map[string]T {
+	totals := map[string]T{}
+	for _, ranking := range ranks {
+		for i, rank := range ranking {
+			totals[candidates[rank]] += value(i)
+		}
+	}
+	return totals
+}
+
+func convertCondorcetMap(m map[[2]int]int, candidates map[int]string) map[string]int {
+	ret := make(map[string]int, len(m))
+	for k, v := range m {
+		ret[fmt.Sprintf("%v > %v", candidates[k[0]], candidates[k[1]])] = v
+	}
+	return ret
+}
+
+// returns paths iff winner is not condorcet
+func runSchulze(ranks [][]int, candidates map[int]string) (winner string, prefs, paths map[string]int) {
+	candsMap := map[int]bool{}
+	for _, ranking := range ranks {
+		for _, rank := range ranking {
+			candsMap[rank] = true
+		}
+	}
+	prefsMap := map[[2]int]int{}
+	for _, ranking := range ranks {
+		seen := map[int]bool{}
+		for i, rank := range ranking {
+			seen[rank] = true
+			for _, otherRank := range ranking[i+1:] {
+				prefsMap[[2]int{rank, otherRank}] += 1
+			}
+		}
+		for cand := range candsMap {
+			if !seen[cand] {
+				// unranked candidates go after all ranked candidates
+				for _, rank := range ranking {
+					prefsMap[[2]int{rank, cand}] += 1
+				}
+			}
+		}
+	}
+	cands := maps.Keys(candsMap)
+	sort.Ints(cands)
+
+	for _, c1 := range cands {
+		winner := true
+		for _, c2 := range cands {
+			if c1 != c2 && prefsMap[[2]int{c1, c2}] <= prefsMap[[2]int{c2, c1}] {
+				winner = false
+			}
+		}
+		if winner {
+			return candidates[c1], convertCondorcetMap(prefsMap, candidates), nil
+		}
+	}
+
+	pathsMap := map[[2]int]int{}
+	// https://en.wikipedia.org/wiki/Schulze_method#Implementation
+	// d is prefsMap, p is pathsMap, 1..C is cands.
+	for _, c1 := range cands {
+		for _, c2 := range cands {
+			if c1 == c2 {
+				continue
+			}
+
+			if prefsMap[[2]int{c1, c2}] > prefsMap[[2]int{c2, c1}] {
+				pathsMap[[2]int{c1, c2}] = prefsMap[[2]int{c1, c2}]
+			} else {
+				pathsMap[[2]int{c1, c2}] = 0
+			}
+		}
+	}
+
+	for _, c1 := range cands {
+		for _, c2 := range cands {
+			if c1 == c2 {
+				continue
+			}
+			for _, c3 := range cands {
+				if c1 == c3 || c2 == c3 {
+					continue
+				}
+				pathsMap[[2]int{c2, c3}] = max(
+					pathsMap[[2]int{c2, c3}],
+					min(pathsMap[[2]int{c2, c1}], pathsMap[[2]int{c1, c3}]))
+			}
+		}
+	}
+
+	for _, c1 := range cands {
+		winner := true
+		for _, c2 := range cands {
+			if c1 != c2 && pathsMap[[2]int{c1, c2}] <= pathsMap[[2]int{c2, c1}] {
+				winner = false
+			}
+		}
+		if winner {
+			return candidates[c1],
+				convertCondorcetMap(prefsMap, candidates),
+				convertCondorcetMap(pathsMap, candidates)
+		}
+	}
+	panic(fmt.Sprintf("no schulze winner %v %v", prefsMap, pathsMap))
+}
+
+func ShowRCVContest(b *BallotData, contestID int) {
+	// NOTE: results here differ slightly from published results; seemingly for
+	// ballots that get manually audited that doesn't make it back into the
+	// dataset.
+	contestInfo := b.Contests[contestID]
+
+	cands, err := candidates(b, contestID)
+	if err != nil {
+		panic(err)
+	}
+
+	stringResults := map[string]int{}
+	var rankResults [][]int
+	for _, card := range b.Cards {
+		for _, contest := range card.Contests {
+			if contest.ID != contestID {
+				continue
+			}
+
+			ranks, voteStr, err := scoreRCVContest(contest, cands, contestInfo.NumOfRanks)
+			if err != nil {
+				panic(err)
+			}
+			stringResults[voteStr]++
+			rankResults = append(rankResults, ranks)
+		}
+	}
+
+	fmt.Printf("%v (RCV, rank up to %v)\n", contestInfo.Description, contestInfo.NumOfRanks)
+	fmt.Print(formatResults(stringResults))
+	fmt.Println()
+
+	irvResults := runIRV(rankResults, cands)
+	for i, round := range irvResults {
+		fmt.Printf("IRV Round %v\n", i+1)
+		fmt.Print(formatResults(round.topChoices))
+		if i == len(irvResults)-1 {
+			fmt.Println(round.eliminated, "wins")
+		} else {
+			fmt.Println(round.eliminated, "is eliminated")
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("Borda count")
+	fmt.Print(formatResults(runPositional(rankResults, cands, borda(contestInfo.NumOfRanks))))
+	fmt.Println()
+
+	fmt.Println("Nauru/Dowdall method")
+	fmt.Print(formatResults(runPositional(rankResults, cands, dowdall)))
+	fmt.Println()
+
+	fmt.Println("Schulze method")
+	winner, prefs, paths := runSchulze(rankResults, cands)
+	fmt.Println(winner, ternary(paths == nil, "(condorcet winner)", ""))
+	fmt.Println("Preferences:")
+	fmt.Print(formatResults(prefs))
+	if paths != nil {
+		fmt.Println("Strongest paths:")
+		fmt.Print(formatResults(paths))
+	}
 	fmt.Println()
 }
 

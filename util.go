@@ -37,7 +37,7 @@ func powerset[T any](xs []T) [][]T {
 }
 
 type numeric interface {
-	constraints.Integer | constraints.Float | constraints.Complex
+	constraints.Integer | constraints.Float
 }
 
 func sum[T numeric](xs []T) T {
@@ -46,4 +46,32 @@ func sum[T numeric](xs []T) T {
 		acc += x
 	}
 	return acc
+}
+
+func min[T numeric](xs ...T) T {
+	m := xs[0]
+	for _, x := range xs[1:] {
+		if x < m {
+			m = x
+		}
+	}
+	return m
+}
+
+func max[T numeric](xs ...T) T {
+	m := xs[0]
+	for _, x := range xs[1:] {
+		if x > m {
+			m = x
+		}
+	}
+	return m
+}
+
+func ternary[T any](cond bool, th, el T) T {
+	if cond {
+		return th
+	} else {
+		return el
+	}
 }

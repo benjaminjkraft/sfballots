@@ -46,7 +46,11 @@ func main() {
 	ShowContestsByCard(b)
 
 	for _, id := range ids {
-		ShowContest(b, id)
+		if b.Contests[id].NumOfRanks > 0 {
+			ShowRCVContest(b, id)
+		} else {
+			ShowContest(b, id)
+		}
 	}
 
 	for _, is := range powerset(ids) {

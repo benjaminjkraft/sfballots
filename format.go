@@ -27,6 +27,10 @@ func cmpOne(x, y string) int {
 		return -1
 	case x == "Abs" || x == "Abstain":
 		return 1
+	case y == "Exhausted":
+		return -1
+	case x == "Exhausted":
+		return 1
 	case y == "Write-in":
 		return -1
 	case x == "Write-in":
@@ -59,9 +63,9 @@ func less(x, y string) bool {
 	return slices.CompareFunc(xw, yw, cmpOne) == -1
 }
 
-func formatResults(results map[string]int) string {
+func formatResults[T numeric](results map[string]T) string {
 	keys := make([]string, 0, len(results))
-	total := 0
+	total := T(0)
 	w := len("Total")
 	for k, v := range results {
 		keys = append(keys, k)
@@ -75,9 +79,9 @@ func formatResults(results map[string]int) string {
 	f := "%" + strconv.Itoa(w) + "v"
 	lines := make([]string, len(results)+1)
 	for i, k := range keys {
-		lines[i] = fmt.Sprintf(f+": %7v (%4.1f%%)", k, results[k], float64(100*results[k])/float64(total))
+		lines[i] = fmt.Sprintf(f+": %7v (%4.1f%%)", k, int(results[k]), float64(100*results[k])/float64(total))
 	}
-	lines[len(results)] = fmt.Sprintf(f+": %7v", "Total", total)
+	lines[len(results)] = fmt.Sprintf(f+": %7v", "Total", int(total))
 	return strings.Join(lines, "\n") + "\n"
 }
 
