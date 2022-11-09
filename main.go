@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,13 +10,12 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-func doMany(b *BallotData, dir string, show bool, ids ...int) {
+func doMany(b *BallotData, prefix string, show bool, ids ...int) {
 	results := AnalyzeManyContests(b, len(ids) > 2, ids...)
 	if show {
 		fmt.Print(formatResults(results))
 	}
-	filename := filepath.Join(dir,
-		"results_"+strings.Join(map1(strconv.Itoa, ids), "_")+".csv")
+	filename := prefix + "results_" + strings.Join(map1(strconv.Itoa, ids), "_") + ".csv"
 	err := os.WriteFile(filename, []byte(formatCSV(results)), 0o644)
 	if err != nil {
 		panic(err)
@@ -35,6 +33,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	prefix, _, _ := strings.Cut(os.Args[1], ".")
+	prefix += "_"
 
 	b, err := BuildBallotData(d)
 	if err != nil {
@@ -71,7 +72,7 @@ func main() {
 
 	for _, is := range powerset(ids) {
 		if len(is) > 1 {
-			doMany(b, os.Args[1], len(is) == len(ids), is...)
+			doMany(b, prefix, len(is) == len(ids), is...)
 		}
 	}
 
@@ -79,14 +80,14 @@ func main() {
 		grid := GridChart(b, len(ids) > 2, ids...)
 		basename := "results_grid_" + strings.Join(map1(strconv.Itoa, ids), "_")
 
-		csv := filepath.Join(os.Args[1], basename+".csv")
+		csv := prefix + basename + ".csv"
 		err = os.WriteFile(csv, []byte(formatGrid(grid)), 0o644)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println("wrote", csv)
 
-		html := filepath.Join(os.Args[1], basename+".html")
+		html := prefix + basename + ".html"
 		err = os.WriteFile(html, []byte(formatGridHTML(grid)), 0o644)
 		if err != nil {
 			panic(err)

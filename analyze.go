@@ -13,8 +13,10 @@ import (
 )
 
 func ShowContestsByCard(b *BallotData) {
+	contestIDs := make([]int, len(b.Raw.Contests))
 	contestIndexes := make(map[int]int, len(b.Raw.Contests))
 	for i, contest := range b.Raw.Contests {
+		contestIDs[i] = contest.ID
 		contestIndexes[contest.ID] = i
 	}
 
@@ -29,6 +31,15 @@ func ShowContestsByCard(b *BallotData) {
 		}
 		counts[string(sig)] += 1
 	}
+
+	digits := len(strconv.Itoa(max(contestIDs...)))
+	for i := 0; i < digits; i++ {
+		for _, id := range contestIDs {
+			fmt.Printf(fmt.Sprintf("%0"+strconv.Itoa(digits)+"d", id)[i : i+1])
+		}
+		fmt.Println()
+	}
+
 	for k, v := range counts {
 		fmt.Println(k, v)
 	}

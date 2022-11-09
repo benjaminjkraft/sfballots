@@ -1,10 +1,13 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -158,8 +161,14 @@ type file struct {
 	List    any
 }
 
-func decode(filename string, v any) error {
-	f, err := os.Open(filename)
+type loader interface {
+	load(name string) (fs.File, error)
+	files() ([]fs.FileInfo, error)
+	Close() error
+}
+
+func decode(loader loader, filename string, v any) error {
+	f, err := loader.load(filename)
 	if err != nil {
 		return err
 	}
@@ -168,7 +177,59 @@ func decode(filename string, v any) error {
 	return json.NewDecoder(f).Decode(v)
 }
 
-func LoadAll(dir string) (*RawBallotData, error) {
+type dirLoader struct{ dir string }
+
+func (dl *dirLoader) load(name string) (fs.File, error) {
+	return os.Open(filepath.Join(dl.dir, name))
+}
+
+func (dl *dirLoader) files() ([]fs.FileInfo, error) {
+	f, err := os.Open(dl.dir)
+	if err != nil {
+		return nil, err
+	}
+	return f.Readdir(0)
+}
+
+func (dl *dirLoader) Close() error { return nil }
+
+type zipLoader struct {
+	*zip.ReadCloser
+}
+
+func newZipLoader(path string) (*zipLoader, error) {
+	r, err := zip.OpenReader(path)
+	return &zipLoader{r}, err
+}
+
+func (zl *zipLoader) load(name string) (fs.File, error) {
+	return zl.Open(name)
+}
+
+func (zl *zipLoader) files() ([]fs.FileInfo, error) {
+	ret := make([]fs.FileInfo, len(zl.File))
+	for i, f := range zl.File {
+		ret[i] = f.FileInfo()
+	}
+	return ret, nil
+}
+
+func LoadAll(dirOrZip string) (*RawBallotData, error) {
+	stat, err := os.Stat(dirOrZip)
+	if err != nil {
+		return nil, err
+	}
+
+	var loader loader
+	if stat.IsDir() {
+		loader = &dirLoader{dirOrZip}
+	} else {
+		loader, err = newZipLoader(dirOrZip)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var out RawBallotData
 	rv := reflect.ValueOf(&out).Elem()
 	typ := rv.Type()
@@ -179,15 +240,21 @@ func LoadAll(dir string) (*RawBallotData, error) {
 		}
 
 		x := file{List: rv.Field(i).Addr().Interface()}
-		err := decode(filepath.Join(dir, name+".json"), &x)
+		err := decode(loader, name+".json", &x)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	cvrFilenames, err := filepath.Glob(filepath.Join(dir, "CvrExport*.json"))
+	fileInfos, err := loader.files()
 	if err != nil {
 		return nil, err
+	}
+	var cvrFilenames []string
+	for _, fileInfo := range fileInfos {
+		if strings.HasPrefix(fileInfo.Name(), "CvrExport") {
+			cvrFilenames = append(cvrFilenames, fileInfo.Name())
+		}
 	}
 
 	out.CVRs = make([]*RawCVR, len(cvrFilenames))
@@ -196,7 +263,7 @@ func LoadAll(dir string) (*RawBallotData, error) {
 	for i, filename := range cvrFilenames {
 		i, filename := i, filename
 		g.Go(func() error {
-			err := decode(filename, &out.CVRs[i])
+			err := decode(loader, filename, &out.CVRs[i])
 			return err
 		})
 	}
