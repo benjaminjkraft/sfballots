@@ -26,6 +26,11 @@ func doMany(b *BallotData, dir string, show bool, ids ...int) {
 }
 
 func main() {
+	if len(os.Args) == 1 {
+		fmt.Printf("usage: %s <unzipped CVR dir> [<contest IDs>]\n", os.Args[0])
+		os.Exit(1)
+	}
+
 	d, err := LoadAll(os.Args[1])
 	if err != nil {
 		panic(err)
