@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/exp/maps"
 )
 
 func doMany(b *BallotData, dir string, show bool, ids ...int) {
@@ -44,6 +47,14 @@ func main() {
 	fmt.Println(b)
 
 	ShowContestsByCard(b)
+
+	if len(ids) == 0 {
+		contestIDs := maps.Keys(b.Contests)
+		sort.Ints(contestIDs)
+		for _, id := range contestIDs {
+			fmt.Println(id, b.Contests[id].Description)
+		}
+	}
 
 	for _, id := range ids {
 		if b.Contests[id].NumOfRanks > 0 {
