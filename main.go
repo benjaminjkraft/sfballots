@@ -50,21 +50,25 @@ func main() {
 		}
 	}
 
-	fmt.Println(b)
-
-	ShowContestsByCard(b)
-
 	if len(ids) == 0 {
+		fmt.Println(b)
+
 		contestIDs := maps.Keys(b.Contests)
 		sort.Ints(contestIDs)
 		for _, id := range contestIDs {
 			fmt.Println(id, b.Contests[id].Description)
 		}
+
+		ShowContestsByCard(b)
+
+		return
 	}
 
 	for _, id := range ids {
 		if b.Contests[id].NumOfRanks > 0 {
 			ShowRCVContest(b, id)
+		} else if b.Contests[id].VoteFor > 1 {
+			panic("TODO implement vote for N")
 		} else {
 			ShowContest(b, id)
 		}
