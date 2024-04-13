@@ -147,10 +147,51 @@ func formatGridHTML[T any](grid [][]T) string {
 		}
 	}
 
+	colspans := make([]int, len(grid[0]))
+	for i := 0; i < len(grid[0]); i++ {
+		if colspans[i] == -1 {
+			continue
+		}
+		cell := grid[0][i]
+		if s, ok := any(cell).(string); !ok || s == "" {
+			colspans[i] = 1
+			continue
+		}
+		colspans[i] = 1
+		for j := i + 1; j < len(grid[0]); j++ {
+			if any(cell) == any(grid[0][j]) {
+				colspans[i]++
+				colspans[j] = -1
+			} else {
+				break
+			}
+		}
+	}
+	rowspans := make([]int, len(grid))
+	for i := 0; i < len(grid); i++ {
+		if rowspans[i] == -1 {
+			continue
+		}
+		cell := grid[i][0]
+		if s, ok := any(cell).(string); !ok || s == "" {
+			rowspans[i] = 1
+			continue
+		}
+		rowspans[i] = 1
+		for j := i + 1; j < len(grid); j++ {
+			if any(cell) == any(grid[j][0]) {
+				rowspans[i]++
+				rowspans[j] = -1
+			} else {
+				break
+			}
+		}
+	}
+
 	var b bytes.Buffer
 	b.WriteString("<table>\n<thead>\n")
 	inHead := true
-	for _, row := range grid {
+	for i, row := range grid {
 		// assume strings are headers
 		if inHead {
 			_, isHead := any(row[len(row)-1]).(string)
@@ -160,13 +201,23 @@ func formatGridHTML[T any](grid [][]T) string {
 			}
 		}
 		b.WriteString("<tr>")
-		for _, cell := range row {
+		for j, cell := range row {
 			switch cell := any(cell).(type) {
 			case nil:
 				b.WriteString("<td/>")
 			case string:
+				if i == 0 && colspans[j] < 0 || j == 0 && rowspans[i] < 0 {
+					continue
+				}
+				b.WriteString("<th")
+				if i == 0 && colspans[j] > 1 {
+					fmt.Fprintf(&b, " colspan=%d", colspans[j])
+				}
+				if j == 0 && rowspans[i] > 1 {
+					fmt.Fprintf(&b, " rowspan=%d", rowspans[i])
+				}
 				// don't html inject me SFDOE!
-				fmt.Fprintf(&b, "<th>%s</th>", cell)
+				fmt.Fprintf(&b, ">%s</th>", cell)
 			case float64:
 				var c color
 				f := cell / maxVal
