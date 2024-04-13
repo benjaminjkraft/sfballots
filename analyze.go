@@ -541,41 +541,32 @@ func GridChart(b *BallotData, coalesceInvalid bool, contestIDs ...int) [][]any {
 
 	h, w := sum(ns[1:]), sum(ns[:len(ns)-1])
 
-	showContestLabels := len(contestIDs) > 2
-	labels := 1
-	if showContestLabels {
-		labels = 2
-	}
-	ret := make([][]any, h+labels)
-	if showContestLabels {
-		c := labels
-		ret[0] = make([]any, w+labels)
-		for j := 0; j < len(ns)-1; j++ {
-			for m := 0; m < ns[j]; m++ {
-				ret[0][c+m] = b.Contests[contestIDs[j]].Description
-			}
-			c += ns[j]
-		}
-	}
-	ret[labels-1] = make([]any, w+labels)
-	c := labels
+	ret := make([][]any, h+2)
+	c := 2
+	ret[0] = make([]any, w+2)
 	for j := 0; j < len(ns)-1; j++ {
 		for m := 0; m < ns[j]; m++ {
-			ret[labels-1][c+m] = strings.TrimSpace(candss[j][m])
+			ret[0][c+m] = b.Contests[contestIDs[j]].Description
+		}
+		c += ns[j]
+	}
+	ret[1] = make([]any, w+2)
+	c = 2
+	for j := 0; j < len(ns)-1; j++ {
+		for m := 0; m < ns[j]; m++ {
+			ret[1][c+m] = strings.TrimSpace(candss[j][m])
 		}
 		c += ns[j]
 	}
 
-	r := labels
+	r := 2
 	for i := 1; i < len(contestIDs); i++ {
 		for k := 0; k < ns[i]; k++ {
-			ret[r+k] = make([]any, w+labels)
-			if showContestLabels {
-				ret[r+k][0] = b.Contests[contestIDs[i]].Description
-			}
-			ret[r+k][labels-1] = strings.TrimSpace(candss[i][k])
+			ret[r+k] = make([]any, w+2)
+			ret[r+k][0] = b.Contests[contestIDs[i]].Description
+			ret[r+k][1] = strings.TrimSpace(candss[i][k])
 		}
-		c := labels
+		c := 2
 		for j := 0; j < i; j++ {
 			results := AnalyzeManyContests(b, coalesceInvalid, contestIDs[i], contestIDs[j])
 			total := sum(maps.Values(results))

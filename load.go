@@ -116,7 +116,7 @@ type RawSession struct {
 	BatchID         int
 	CountingGroupID int
 	Original        RawSessionOriginal
-	RecordID        int
+	RecordID        json.RawMessage // int for older CVR, string for newer
 	SessionType     string
 	TabulatorID     int
 }

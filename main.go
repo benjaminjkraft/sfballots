@@ -25,7 +25,7 @@ func doMany(b *BallotData, prefix string, show bool, ids ...int) {
 
 func main() {
 	if len(os.Args) == 1 {
-		fmt.Printf("usage: %s <unzipped CVR dir> [<contest IDs>]\n", os.Args[0])
+		fmt.Printf("usage: %s data/CVR_Export_YYYYMMDDHHMMSS.zip> [<contest IDs>]\n", os.Args[0])
 		os.Exit(1)
 	}
 
