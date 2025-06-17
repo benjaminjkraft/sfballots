@@ -20,10 +20,6 @@ func BuildBallotData(in *RawBallotData) (*BallotData, error) {
 		PrecinctPortionNames: map[int]string{},
 	}
 	for _, cand := range in.Candidates {
-		if cand.Type == "QualifiedWriteIn" {
-			// Skip write-ins as we don't have that data anyway
-			continue
-		}
 		out.Candidates[cand.ID] = cand
 		out.CandidatesByContest[cand.ContestID] = append(
 			out.CandidatesByContest[cand.ContestID], cand)
@@ -33,7 +29,11 @@ func BuildBallotData(in *RawBallotData) (*BallotData, error) {
 	}
 	for _, cvr := range in.CVRs {
 		for _, session := range cvr.Sessions {
-			out.Cards = append(out.Cards, session.Original.Cards...)
+			if session.Modified.IsCurrent {
+				out.Cards = append(out.Cards, session.Modified.Cards...)
+			} else {
+				out.Cards = append(out.Cards, session.Original.Cards...)
+			}
 		}
 	}
 	for _, pp := range in.PrecinctPortions {

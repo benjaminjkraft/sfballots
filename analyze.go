@@ -69,7 +69,7 @@ func shortName(name string) string {
 		}
 		last := name[i+1:]
 		switch last {
-		case "II", "III", "JR", "JR.", "SR", "SR.":
+		case "", "II", "III", "JR", "JR.", "SR", "SR.":
 			name = name[:i]
 		// me reaping:
 		case "COLLINS":
@@ -159,8 +159,8 @@ func ShowContest(b *BallotData, contestID int) {
 
 func scoreRCVContest(contest *RawCardContest, candidates map[int]string, ranks int) ([]int, string, error) {
 	switch {
-	case contest.Undervotes > 0:
-		return nil, abstain, nil
+	// Undervote here seems to mean "no first choice", which may still be a
+	// valid vote, so ignore it (and handle below).
 	case contest.Overvotes > 0:
 		return nil, invalid, nil
 		// we ignore outstack condition IDs because UnusedRanking is fine.
@@ -177,20 +177,30 @@ func scoreRCVContest(contest *RawCardContest, candidates map[int]string, ranks i
 		if votedRanks[mark.Rank-1] == -1 {
 			votedRanks[mark.Rank-1] = mark.CandidateID
 		} else {
-			// voted for two candidates at the same rank; ignore them all
+			// voted for two candidates at the same rank, we will discard this
+			// and lower ranks below
 			votedRanks[mark.Rank-1] = -2
 		}
 	}
 
 	// We assume that ranks are tabulated as follows: for each rank, take the
-	// next rank the voter voted, skipping any that are empty, duplicated, or
-	// overvoted. So ABCD → ABCD, ABAB → AB, A__B → AB, etc. (Overvoted ranks
-	// are handled above.)
+	// next rank the voter voted, skipping any that are empty, or where the
+	// voter already voted for this candidate. If two candidates have the same
+	// rank, bail, but don't discard higher ranks.
+	// So ABCD → ABCD, ABAB → AB, A__B → AB, AB(CD)E → AB, etc.
 	tabulatedRanks := make([]int, 0, ranks)
 	seen := make(map[int]bool, ranks)
 	for _, cand := range votedRanks {
+		if cand == -2 {
+			// two at the same rank, discard this and later ranks.
+			if len(tabulatedRanks) == 0 {
+				// if this was the only rank, it's an overvote.
+				return nil, invalid, nil
+			}
+			break
+		}
 		if cand < 0 || seen[cand] {
-			// no valid vote at this rank
+			// no valid vote at this rank, but we continue on
 			continue
 		}
 		tabulatedRanks = append(tabulatedRanks, cand)
@@ -198,7 +208,7 @@ func scoreRCVContest(contest *RawCardContest, candidates map[int]string, ranks i
 	}
 
 	if len(tabulatedRanks) == 0 {
-		return nil, invalid, nil
+		return nil, abstain, nil
 	}
 
 	names := make([]string, len(tabulatedRanks))
@@ -210,6 +220,34 @@ func scoreRCVContest(contest *RawCardContest, candidates map[int]string, ranks i
 		names[i] = name
 	}
 	return tabulatedRanks, strings.Join(names, " > "), nil
+}
+
+func rcvBallotSummary(ranks [][]int, candidates map[int]string) string {
+	counts := map[int]int{}  // number of candidates -> count
+	singles := map[int]int{} // candidate ID -> count
+	firsts := map[int]int{}  // candidate ID -> count
+
+	for _, ranking := range ranks {
+		counts[len(ranking)]++
+		if len(ranking) == 0 {
+			continue
+		}
+		firsts[ranking[0]]++
+		if len(ranking) == 1 {
+			singles[ranking[0]]++
+		}
+	}
+
+	var buf strings.Builder
+	for i := 0; i <= len(candidates); i++ {
+		if counts[i] > 0 {
+			fmt.Fprintf(&buf, "%v candidates: %v\n", i, counts[i])
+		}
+	}
+	for id, name := range candidates {
+		fmt.Fprintf(&buf, "%v: %v only, %v first\n", name, singles[id], firsts[id])
+	}
+	return buf.String()
 }
 
 type irvRoundResults struct {
@@ -397,6 +435,10 @@ func ShowRCVContest(b *BallotData, contestID int) {
 
 	fmt.Printf("%v (RCV, rank up to %v)\n", contestInfo.Description, contestInfo.NumOfRanks)
 	fmt.Print(formatResults(stringResults))
+	fmt.Println()
+
+	fmt.Println("Ballot summary")
+	fmt.Print(rcvBallotSummary(rankResults, cands))
 	fmt.Println()
 
 	irvResults := runIRV(rankResults, cands)
